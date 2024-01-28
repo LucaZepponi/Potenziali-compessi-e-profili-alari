@@ -1,0 +1,789 @@
+(*Moduli per gestire funzioni complesse e le loro parti reali e \
+immaginarie*)
+(*********************************************************************)
+
+(*Ridefinisco le funzioni Arg e Abs*)
+Unprotect[Arg];
+Arg[x + I y] := ArcTan[x, y];
+Unprotect[Abs];
+Abs[x + I y] := Sqrt[x^2 + y^2];
+
+(*La funzione ToReal mi restituisce le parti reale e immaginaria del \
+numero complesso (z) inserito, mentre la funzione ToComplex mi \
+restituisce il numero complesso relativo alle parti reale (x) e \
+immaginaria (y) inserite*)
+Clear[ToReal]
+ToReal[exp_, z_, {x_, y_}] := 
+ Module[{exprep = ReplaceAll[exp, z :> x + I y]}, 
+  ComplexExpand[{Re[exprep], Im[exprep]}]]
+ToReal[exp_] := ToReal[exp, z, {x, y}]
+
+(*Come ToReal mi restituisce funzioni*)
+Clear[RealFunction]
+RealFunction[f_][s_, t_] := ToReal[f, z, {s, t}]
+
+Clear[GradRe]
+(*La funzione GradRe mi restiutuisce il gradiente della parte reale \
+della funzione inserita*)
+GradRe[exp_, z_, {x_, y_}] := Grad[ToReal[exp, z, {x, y}][[1]], {x, y}]
+
+GradRe[exp_] := GradRe[exp, z, {x, y}]
+(***********************************************************************)
+(*Moduli per trasformare curve reali con trasformazioni conformi*)
+(***********************************************************)
+
+(*Data una trasformazione conforme f[z], Composizione trasforma una \
+curva reale s -> (gammax[s], gammay[s]) nella curva trasformata dalla \
+f*)
+(*Nell'input si mette solo il nome della funzione f, non la scrittura \
+f[z]*)
+Clear[Composizione]
+Composizione[f_, {gammax_, gammay_}][s_] := 
+ RealFunction[f[z]][gammax[s], gammay[s]]
+
+(*Trasformazioni conformi elementari*)
+(*Spostamento è la traslazione di vettore (= numero complesso) alpha*)
+Spostamento[alpha_][z_] := z + alpha;
+(*Ruotamento è la rotazione di angolo theta (theta è un numero reale)*)
+Ruotamento[theta_][z_] := (Cos[theta] + I Sin[theta])*z;
+(*Ruotospostamento è la composizione di una rotazione seguita da una \
+traslazione (theta è numero reale e alpha è numero complesso)*)
+Ruotospostamento[alpha_, theta_][z_] := 
+  Spostamento[alpha][Ruotamento[theta][z]];
+(*Dilatamento è la dilatazione (= moltiplicazione) di un numero reale \
+rho*)
+Dilatamento[rho_][z_] := rho*z;
+(*Joukamento è la trasformazione di Joukowsky*)
+Joukamento[z_] := 1/2 (z + 1/z);
+(*Joukospostamento è la trasformazione ottenuta componendo una \
+dilatazione di rho (reale), una traslazione di vettore alpha (numero \
+complesso) e la Joukowsky*)
+Joukospostamento[alpha_, rho_][z_] := 
+  Joukamento[Spostamento[alpha][Dilatamento[rho][z]]];
+(*********************************************************************)
+
+(*Moduli che applicano trasformazioni conformi ad una curva reale \
+(gammax[s],gammay[s])*)
+(*********************************************************************************)
+
+(*Traslazione effettua la traslazione di una curva \
+(gammax[s],gammay[s]) per il vettore alpha (numero complesso)*)
+Traslazione[alpha_, {gammax_, gammay_}][s_] := 
+  Composizione[Spostamento[alpha], {gammax, gammay}][s];
+(*Rotazione effettua la rotazione di una curva (gammax[s],gammay[s]) \
+per l'angolo theta (numero reale)*)
+Rotazione[theta_, {gammax_, gammay_}][s_] := 
+  Composizione[Ruotamento[theta], {gammax, gammay}][s];
+(*Ruototraslazione effettua la rotazione seguita da una traslazione \
+di una curva (gammax[s],gammay[s]) per angolo theta (numero reale) e \
+il vettore alpha (numero complesso)*)
+Ruototraslazione[alpha_, theta_, {gammax_, gammay_}][s_] := 
+  Composizione[Ruotospostamento[alpha, theta], {gammax, gammay}][s];
+(*Dilatazione effettua la dilatazione di una curva \
+(gammax[s],gammay[s]) per il numero reale rho*)
+Dilatazione[rho_, {gammax_, gammay_}][s_] := 
+  Composizione[Dilatamento[rho], {gammax, gammay}][s];
+(*Joukowsky*)
+Joukowsky[alpha_, rho_, {gammax_, gammay_}][s_] := 
+  Composizione[Joukospostamento[alpha, rho], {gammax, gammay}][s];
+(*********************************************************************************)
+
+(*********************************************************************************)
+(*Trasformazione di Milne-Thomnson: trasforma un potenziale complesso \
+f(z) nel potenziale complesso adattato ad un ostacolo circolare di \
+raggio a*)
+MT[f_, a_][z_] := f[z] + f[a^2/z]
+(*********************************************************************************)
+
+
+(*Moduli che generano i flussi*)
+(*********************************************************************************)
+
+(*Con la funzione StreamCurve trovo le curve integrali relative alle \
+equazioni differenziali x'(t)=X(x(t)) e y'(t)=Y(y(t)), al variare di \
+t in (t1, t2), con condizoni iniziali x(t0)=x0 e y(t0)=y0.*)
+(*Il campo vettoriale (X(x,y), Y(x,y)) è dato come input a \
+StreamCurve tramite una lista con due argomenti (è la variabile vect)*)
+(*Si possono dare le opzioni NDSolve tramite la variabile opts*)
+(*L'output di StreamCurve è una lista di due argomenti in cui ogni \
+argomento è una regola di sostituzione*)
+Clear[StreamCurve]
+StreamCurve[vect_, {x_, y_}, {x0_, y0_}, {t_, t1_, t2_}, opts___] := 
+ Flatten[
+  NDSolve[{x'[t] == ReplaceAll[vect[[1]], {x :> x[t], y :> y[t]}], 
+    y'[t] == ReplaceAll[vect[[2]], {x :> x[t], y :> y[t]}], 
+    x[0] == x0, y[0] == y0}, {x, y}, {t, t1, t2}, opts]]
+
+(*Flussox e Flussoy sono due funzioni di una variabile che forniscono \
+una curva integrale del gradiente della parte reale di una funzione \
+olomorfa f(z)*)
+(*L'input è dato da: la funzione f(z) (ma solo il nome f, non la z!), \
+la condizione iniziale (x0,y0) della curva, l'tintervallo del tempo \
+tmin e tmax*)
+Flussox[f_, {x0_, y0_}, tmin_, tmax_][s_] := 
+ x[s] //. 
+  StreamCurve[GradRe[f[z]], {x, y}, {x0, y0}, {t, tmin, tmax}][[1]]
+Flussoy[f_, {x0_, y0_}, tmin_, tmax_][s_] := 
+ y[s] //. 
+  StreamCurve[GradRe[f[z]], {x, y}, {x0, y0}, {t, tmin, tmax}][[2]]
+
+(*DeterminaTempoMinMax crea una tabella di tempi minimi e massimi \
+entro cui il metodo di Mathematica NDSolve deve integrare. Tale \
+funzione è stata costruita per fare in modo che ogni curva integrale \
+sia definita su un intervallo opportuno*)
+(*Per usare questa funzione occorre definire: 1) un potenziale \
+complesso, 2)una tabella di condizioni iniziali, 3) la x massima \
+raggiungibile, 4) la x minima raggiungibile, 5) la y massima \
+raggiungibile, 6) la y minima raggiungibile, 7) il tempo massimo \
+entro cui integrare*)
+Clear[DeterminaTempoMinMax]
+DeterminaTempoMinMax[f_, cond_, xMax_, xMin_, yMax_, yMin_, tMax_] := 
+ Module[{t1, t2, temp, break},
+  tabellaTempi = Table[{0, 0}, {i, 1, Length[cond]}];
+  For[j = 1, j <= Length[cond], j = j + 1, {
+    	t1 = 0;
+    	t2 = 0;
+    	temp = 0;
+    	break = True;
+    	
+    	(*Calcolo t2*)
+    	For[k = 1000, k != 0.001, k = k/10, {
+      	For[
+       i = 0, ((Check[
+             StreamCurve[GradRe[f[z]], {x, y}, 
+               cond[[j]], {t, 0, temp}][[1]], $Failed] === $Failed) ===
+           False) && ((Check[
+             StreamCurve[GradRe[f[z]], {x, y}, 
+               cond[[j]], {t, 0, temp}][[2]], $Failed] === $Failed) ===
+           False) && break, 
+       	If[((x //. {StreamCurve[GradRe[f[z]], {x, y}, 
+                 cond[[j]], {t, 0, temp}][[1]]})[temp] < 
+           xMax) && ((y //. {StreamCurve[GradRe[f[z]], {x, y}, 
+                 cond[[j]], {t, 0, temp}][[2]]})[temp] < 
+           yMax) && (temp < tMax), {i++, temp += k}, break = False ]
+       	];
+      	temp -= k;
+      	break = True;
+      }];
+    	t2 = temp;
+    	temp = 0;
+    	tabellaTempi[[j, 2]] = t2;
+    	
+    	(*Calcolo t1*)
+    	For[k = 1000, k != 0.001, k = k/10, {
+      	For[
+       i = 0, ((Check[
+             StreamCurve[GradRe[f[z]], {x, y}, 
+               cond[[j]], {t, 0, temp}][[1]], $Failed] === $Failed) ===
+           False) && ((Check[
+             StreamCurve[GradRe[f[z]], {x, y}, 
+               cond[[j]], {t, 0, temp}][[2]], $Failed] === $Failed) ===
+           False) && break, 
+       	If[((x //. {StreamCurve[GradRe[f[z]], {x, y}, 
+                 cond[[j]], {t, 0, temp}][[1]]})[temp] > 
+           
+           xMin) && ((y //. {StreamCurve[GradRe[f[z]], {x, y}, 
+                 cond[[j]], {t, 0, temp}][[2]]})[temp] > 
+           yMin) && (temp > -tMax), {i++, temp -= k}, break = False ]
+       	];
+      	temp += k;
+      	break = True;
+      }];
+    	t1 = temp;
+    	tabellaTempi[[j, 1]] = t1;
+    }];
+  Return[tabellaTempi];
+  ]
+(***********************************************************)
+(*Metodi per linee di flusso con frecce*)
+
+(*LineeDiFlusso genera una collezione di curve integrali date dalla \
+parte reale della funzione f con condizioni iniziali dati dalla lista \
+cond*)
+(*Per usare questa funzione, deve essere definita la funzione \
+complessa da passare in input*)
+Clear[LineeDiFlusso]
+LineeDiFlusso[f_, cond_, tMinMax_][s_] := 
+ Table[{Flussox[f, cond[[i]], tMinMax[[i, 1]], tMinMax[[i, 2]]][s], 
+   Flussoy[f, cond[[i]], tMinMax[[i, 1]], tMinMax[[i, 2]]][s]}, {i, 1,
+    Length[cond]}]
+
+
+(*PlotLineeDiFlusso disegna una collezione di curve integrali date \
+dalla parte reale della funzione f con condizioni iniziali dati dalla \
+lista cond*)
+(*Per usare questa funzione, deve essere definita 1) la funzione \
+complessa da passare in input, 2) una tabella di condizioni iniziali, \
+3) una tabella di tempi minimi e massimi (da determinare con la \
+funzione DeterminaTempoMinMax, 4) eventuali opzioni per il grafico*) 
+Clear[PlotLineeDiFlusso]
+PlotLineeDiFlusso[f_, cond_, tMinMax_, opts___] := 
+ Show[Table[
+   ParametricPlot[{Flussox[f, cond[[i]], tMinMax[[i, 1]], 
+       tMinMax[[i, 2]]][s], 
+     Flussoy[f, cond[[i]], tMinMax[[i, 1]], tMinMax[[i, 2]]][s]}, {s, 
+     tMinMax[[i, 1]], tMinMax[[i, 2]]}, opts, PlotRange -> All], {i, 
+    1, Length[cond]}]]
+
+
+(*PuntiSuLineeDiFlusso calcola le coordinate di alcuni punti sulle \
+curve integrali della funzione f con condizioni iniziali cond*)
+(*Per usare questa funzione, deve essere definita 1) la funzione \
+complessa da passare in input, 2) una tabella di condizioni iniziali, \
+3) una tabella di tempi minimi e massimi (da determinare con la \
+funzione DeterminaTempoMinMax, 4) il numero di punti che si vogliono*) \
+
+Clear[PuntiSuLineeDiFlusso]
+PuntiSuLineeDiFlusso[f_, cond_, tMinMax_, n_] := Table[
+  {Flussox[f, cond[[i]], tMinMax[[i, 1]], tMinMax[[i, 2]]][s], 
+   Flussoy[f, cond[[i]], tMinMax[[i, 1]], tMinMax[[i, 2]]][s]}, {i, 1,
+    Length[cond]},
+  {s, tMinMax[[i, 1]], tMinMax[[i, 2]],
+   ((tMinMax[[i, 2]] - tMinMax[[i, 1]])/(n - 1))}]
+
+(*PlotPuntiSuLineeDiFlusso disegna i punti sulle cooridnate di \
+PuntiSuLineeDiFlusso*)
+(*Per usare questa funzione, deve essere definita 1) la funzione \
+complessa da passare in input, 2) una tabella di condizioni iniziali, \
+3) una tabella di tempi minimi e massimi (da determinare con la \
+funzione DeterminaTempoMinMax, 4) il numero di punti che si vogliono, \
+5) il raggio dei punti da disegnare, 6) opzioni per il grafico*) 
+Clear[PlotPuntiSuLineeDiFlusso]
+PlotPuntiSuLineeDiFlusso[f_, cond_, tMinMax_, n_, raggioDischi_, 
+  opts___] := 
+ Show[Table[
+   Graphics[
+    Disk[PuntiSuLineeDiFlusso[f, cond, tMinMax, n][[i, j]], 
+     raggioDischi]], {i, 1, Length[cond]}, {j, 1, n}], opts, 
+  PlotRange -> All]
+
+(*FrecceSuLineeDiFlusso calcola i le cooridnate di alcuni punti sulle \
+linee di flusso per inserire le frecce che rappresentano la direzione \
+del moto del fluido*)
+(*Per usare questa funzione, deve essere definita 1) la funzione \
+complessa da passare in input, 2) una tabella di condizioni iniziali, \
+3) una tabella di tempi minimi e massimi (da determinare con la \
+funzione DeterminaTempoMinMax, 4) il numero di punti che si vogliono, \
+5) la lunghezza delle frecce*)
+Clear[FrecceSuLineeDiFlusso]
+FrecceSuLineeDiFlusso[f_, cond_, tMinMax_, n_, l_] := Union[
+  Table[Arrow[{PuntiSuLineeDiFlusso[f, cond, tMinMax, n][[i, j]], 
+     PuntiSuLineeDiFlusso[f, cond, tMinMax, n][[i, j]] + 
+      l Normalize[
+        GradRe[f[z]] /. {x :> 
+           PuntiSuLineeDiFlusso[f, cond, tMinMax, n][[i, j, 1]], 
+          
+          y :> PuntiSuLineeDiFlusso[f, cond, tMinMax, n][[i, j, 
+             2]]}]}], {i, 1, Length[cond], 2}, {j, 1, n, 2}],
+  Table[Arrow[{PuntiSuLineeDiFlusso[f, cond, tMinMax, n][[i, j]], 
+     PuntiSuLineeDiFlusso[f, cond, tMinMax, n][[i, j]] + 
+      l Normalize[
+        GradRe[f[z]] /. {x :> 
+           PuntiSuLineeDiFlusso[f, cond, tMinMax, n][[i, j, 1]], 
+          y :> PuntiSuLineeDiFlusso[f, cond, tMinMax, n][[i, j, 
+             2]]}]}], {i, 2, Length[cond], 2}, {j, 2, n, 2}]]
+
+(*MostraLineeFrecce Unisce gli output delle funzioni \
+PlotLineeDiFlusso e \
+Graphics[FrecceSuLineeDiFlusso[f,cond,tMinMax,n,l],opts]*)
+(*Gli input da inserire sono quelli necessari per il funzionamento \
+delle due funzioni*)
+Clear[MostraLineeFrecce]
+MostraLineeFrecce[f_, cond_, tMinMax_, n_, l_, opts__] := Show[
+  PlotLineeDiFlusso[f, cond, tMinMax, opts],
+  (*PlotPuntiSuLineeDiFlusso[f,cond,tMinMax,n,r],*)
+  Graphics[FrecceSuLineeDiFlusso[f, cond, tMinMax, n, l], opts]
+  ]
+
+(***********************************************************)
+(*Metodi per linee di flusso e frecce ruotate*)
+(***********************************************************)
+
+(*LineeDiFlussoRuotate genera una collezione di curve integrali date \
+dalla parte reale della funzione f con condizioni iniziali dati dalla \
+lista cond e trasformate tramite la rotazione di angolo theta, dato \
+come secondo input*)
+(*Per usare questa funzione, deve essere definita la funzione \
+complessa da passare in input*)
+Clear[LineeDiFlussoRuotate]
+LineeDiFlussoRuotate[f_, theta_, cond_, tMinMax_][s_] := 
+ Table[Rotazione[
+    theta, {Flussox[f, cond[[i]], tMinMax[[i, 1]], tMinMax[[i, 2]]], 
+     Flussoy[f, cond[[i]], tMinMax[[i, 1]], tMinMax[[i, 2]]]}][s], {i,
+    1, Length[cond]}]
+
+(*PlotLineeDiFlussoRuotate disegna una collezione di curve integrali \
+ruotate di angolo theta date dalla parte reale della funzione f con \
+condizioni iniziali dati dalla lista cond*)
+(*Per usare questa funzione, deve essere definita 1) la funzione \
+complessa da passare in input, 2) l'angolo theta, 3) una tabella di \
+condizioni iniziali, 4) una tabella di tempi minimi e massimi (da \
+determinare con la funzione DeterminaTempoMinMax, 5) eventuali \
+opzioni per il grafico*) 
+Clear[PlotLineeDiFlussoRuotate]
+PlotLineeDiFlussoRuotate[f_, theta_, cond_, tMinMax_, opts___] := 
+ Show[Table[
+   ParametricPlot[
+    Rotazione[
+      theta, {Flussox[f, cond[[i]], tMinMax[[i, 1]], tMinMax[[i, 2]]],
+        Flussoy[f, cond[[i]], tMinMax[[i, 1]], tMinMax[[i, 2]]]}][
+     s], {s, tMinMax[[i, 1]], tMinMax[[i, 2]]}, opts, 
+    PlotRange -> All], {i, 1, Length[cond]}]]
+
+
+(*PuntiSuLineeDiFlussoRuotate calcola le coordinate di alcuni punti \
+sulle curve integrali della funzione f con condizioni iniziali cond \
+ruotate di angolo theta*)
+(*Per usare questa funzione, deve essere definita 1) la funzione \
+complessa da passare in input, 2) l'angolo tetha, 3) una tabella di \
+condizioni iniziali, 4) una tabella di tempi minimi e massimi (da \
+determinare con la funzione DeterminaTempoMinMax, 5) il numero di \
+punti che si vogliono*) 
+Clear[PuntiSuLineeDiFlussoRuotate]
+PuntiSuLineeDiFlussoRuotate[f_, theta_, cond_, tMinMax_, n_] := 
+ Table[
+  Rotazione[
+    theta, {Flussox[f, cond[[i]], tMinMax[[i, 1]], tMinMax[[i, 2]]], 
+     Flussoy[f, cond[[i]], tMinMax[[i, 1]], tMinMax[[i, 2]]]}][s], {i,
+    1, Length[cond]},
+  {s, tMinMax[[i, 1]], tMinMax[[i, 2]],
+   ((tMinMax[[i, 2]] - tMinMax[[i, 1]])/(n - 1))}]
+
+(*PlotPuntiSuLineeDiFlusso disegna i punti sulle cooridnate di \
+PuntiSuLineeDiFlussoRuotate*)
+(*Per usare questa funzione, deve essere definiti 1) la funzione \
+complessa da passare in input, 2) l'angolo theta, 3) una tabella di \
+condizioni iniziali, 4) una tabella di tempi minimi e massimi (da \
+determinare con la funzione DeterminaTempoMinMax, 5) il numero di \
+punti che si vogliono, 6) il raggio dei punti da disegnare, 7) \
+opzioni per il grafico*)
+Clear[PlotPuntiSuLineeDiFlussoRuotate]
+PlotPuntiSuLineeDiFlussoRuotate[f_, theta_, cond_, tMinMax_, n_, 
+  raggioDischi_, opts___] := 
+ Show[Table[
+   Graphics[
+    Disk[PuntiSuLineeDiFlussoRuotate[f, theta, cond, tMinMax, n][[i, 
+       j]], raggioDischi]], {i, 1, Length[cond]}, {j, 1, n}], opts, 
+  PlotRange -> All]
+
+(*FrecceSuLineeDiFlussoRuotate calcola i le cooridnate di alcuni \
+punti sulle linee di flusso per inserire le frecce che rappresentano \
+la direzione del moto del fluido ruotate di angolo theta*)
+(*Per usare questa funzione, deve essere definita 1) la funzione \
+complessa da passare in input, 2) l'angolo theta, 3) una tabella di \
+condizioni iniziali, 4) una tabella di tempi minimi e massimi (da \
+determinare con la funzione DeterminaTempoMinMax, 5) il numero di \
+punti che si vogliono, 6) la lunghezza delle frecce*)
+Clear[FrecceSuLineeDiFlussoRuotate]
+FrecceSuLineeDiFlussoRuotate[f_, theta_, cond_, tMinMax_, n_, l_] := 
+ Union[
+  Table[Arrow[{PuntiSuLineeDiFlussoRuotate[f, theta, cond, tMinMax, 
+       n][[i, j]], 
+     PuntiSuLineeDiFlussoRuotate[f, theta, cond, tMinMax, n][[i, j]] +
+       l Normalize[
+        GradRe[Ruotamento[-theta][f[z]]] /. {x :> 
+           PuntiSuLineeDiFlussoRuotate[f, theta, cond, tMinMax, n][[i,
+              j, 1]], 
+          y :> PuntiSuLineeDiFlussoRuotate[f, theta, cond, tMinMax, 
+             n][[i, j, 2]]}]}], {i, 1, Length[cond], 2}, {j, 1, n, 2}],
+  Table[Arrow[{PuntiSuLineeDiFlussoRuotate[f, theta, cond, tMinMax, 
+       n][[i, j]], 
+     PuntiSuLineeDiFlussoRuotate[f, theta, cond, tMinMax, n][[i, j]] +
+       l Normalize[
+        GradRe[Ruotamento[-theta][f[z]]] /. {x :> 
+           PuntiSuLineeDiFlussoRuotate[f, theta, cond, tMinMax, n][[i,
+              j, 1]], 
+          y :> PuntiSuLineeDiFlussoRuotate[f, theta, cond, tMinMax, 
+             n][[i, j, 2]]}]}], {i, 2, Length[cond], 2}, {j, 2, n, 2}]]
+
+(*MostraLineeFrecceRuotate Unisce gli output delle funzioni \
+PlotLineeDiFlussoRuotate e \
+Graphics[FrecceSuLineeDiFlussoRuotate[f,cond,tMinMax,n,l],opts]*)
+(*Gli input da inserire sono quelli necessari per il funzionamento \
+delle due funzioni*)
+Clear[MostraLineeFrecceRuotate]
+MostraLineeFrecceRuotate[f_, theta_, cond_, tMinMax_, n_, l_, 
+  opts___] := Show[
+  PlotLineeDiFlussoRuotate[f, theta, cond, tMinMax, opts],
+  (*PlotPuntiSuLineeDiFlusso[f,cond,tMinMax,n,r],*)
+  Graphics[
+   FrecceSuLineeDiFlussoRuotate[f, theta, cond, tMinMax, n, l], opts]
+  ]
+
+(***********************************************************)
+(*Metodi per linee di flusso con disco*)
+(***********************************************************)
+
+(*PlotLineeDiFlussoConDisco disegna una collezione di curve integrali \
+date dalla parte reale della funzione f con condizioni iniziali dati \
+dalla lista cond e un disco di raggio r*)
+(*Per usare questa funzione, deve essere definita 1) la funzione \
+complessa da passare in input, 2) il raggio r, 3) una tabella di \
+condizioni iniziali, 4) una tabella di tempi minimi e massimi (da \
+determinare con la funzione DeterminaTempoMinMax, 5) eventuali \
+opzioni per il grafico*) 
+Clear[PlotLineeDiFlussoConDisco]
+PlotLineeDiFlussoConDisco[f_, r_, cond_, tMinMax_, opts___] := 
+ Show[Table[
+   ParametricPlot[{Flussox[MT[f, r], cond[[i]], tMinMax[[i, 1]], 
+       tMinMax[[i, 2]]][s], 
+     Flussoy[MT[f, r], cond[[i]], tMinMax[[i, 1]], tMinMax[[i, 2]]][
+      s]}, {s, tMinMax[[i, 1]], tMinMax[[i, 2]]}, opts, 
+    PlotRange -> All, AxesOrigin -> {0, 0}], {i, 1, Length[cond]}], 
+  Graphics[Disk[{0, 0}, Abs[r]], opts]]
+
+
+Clear[PuntiSuLineeDiFlussoConDisco]
+PuntiSuLineeDiFlussoConDisco[f_, r_, cond_, tMinMax_, n_] := Table[
+  {Flussox[MT[f, r], cond[[i]], tMinMax[[i, 1]], tMinMax[[i, 2]]][s], 
+   Flussoy[MT[f, r], cond[[i]], tMinMax[[i, 1]], tMinMax[[i, 2]]][
+    s]}, {i, 1, Length[cond]},
+  {s, tMinMax[[i, 1]], tMinMax[[i, 2]],
+   ((tMinMax[[i, 2]] - tMinMax[[i, 1]])/(n - 1))}]
+
+Clear[PlotPuntiSuLineeDiFlussoConDisco]
+PlotPuntiSuLineeDiFlussoConDisco[f_, r, cond_, tMinMax_, n_, 
+  raggioDischi_, opts___] := 
+ Show[Table[
+   Graphics[
+    Disk[PuntiSuLineeDiFlussoConDisco[f, r, cond, tMinMax, n][[i, j]],
+      raggioDischi]], {i, 1, Length[cond]}, {j, 1, n}], opts, 
+  PlotRange -> All]
+
+(*Frecce*)
+Clear[FrecceSuLineeDiFlussoConDisco]
+FrecceSuLineeDiFlussoConDisco[f_, r_, cond_, tMinMax_, n_, l_] := 
+ Union[
+  Table[Arrow[{PuntiSuLineeDiFlussoConDisco[f, r, cond, tMinMax, 
+       n][[i, j]], 
+     PuntiSuLineeDiFlussoConDisco[f, r, cond, tMinMax, n][[i, j]] + 
+      l Normalize[
+        GradRe[f[z]] /. {x :> 
+           PuntiSuLineeDiFlussoConDisco[f, r, cond, tMinMax, n][[i, j,
+              1]], y :> 
+           PuntiSuLineeDiFlussoConDisco[f, r, cond, tMinMax, n][[i, j,
+              2]]}]}], {i, 1, Length[cond], 2}, {j, 1, n, 2}],
+  Table[Arrow[{PuntiSuLineeDiFlussoConDisco[f, r, cond, tMinMax, 
+       n][[i, j]], 
+     PuntiSuLineeDiFlussoConDisco[f, r, cond, tMinMax, n][[i, j]] + 
+      l Normalize[
+        GradRe[f[z]] /. {x :> 
+           PuntiSuLineeDiFlussoConDisco[f, r, cond, tMinMax, n][[i, j,
+              1]], y :> 
+           PuntiSuLineeDiFlussoConDisco[f, r, cond, tMinMax, n][[i, j,
+              2]]}]}], {i, 2, Length[cond], 2}, {j, 2, n, 2}]]
+
+Clear[MostraLineeFrecceConDisco]
+MostraLineeFrecceConDisco[f_, r_, cond_, tMinMax_, n_, l_, opts___] :=
+  Show[
+  PlotLineeDiFlussoConDisco[f, r, cond, tMinMax, opts],
+  (*PlotPuntiSuLineeDiFlusso[f,cond,tMinMax,n,r],*)
+  Graphics[FrecceSuLineeDiFlussoConDisco[f, r, cond, tMinMax, n, l], 
+   opts]
+  ]
+
+(*PlotLineeDiFlussoConDiscoRuotate disegna una collezione di curve \
+integrali ruotate di angolo theta date dalla parte reale della \
+funzione f con condizioni iniziali dati dalla lista cond e un disco \
+di raggio r*)
+(*Per usare questa funzione, deve essere definita 1) la funzione \
+complessa da passare in input, 2) il raggio r, 3) l'angolo theta, 4) \
+una tabella di condizioni iniziali, 5) una tabella di tempi minimi e \
+massimi (da determinare con la funzione DeterminaTempoMinMax, 6) \
+eventuali opzioni per il grafico*) 
+Clear[PlotLineeDiFlussoConDiscoRuotate]
+PlotLineeDiFlussoConDiscoRuotate[f_, r_, theta_, cond_, tMinMax_, 
+  opts___] := 
+ Show[Table[
+   ParametricPlot[
+    Rotazione[
+      theta, {Flussox[MT[f, r], cond[[i]], tMinMax[[i, 1]], 
+        tMinMax[[i, 2]]], 
+       Flussoy[MT[f, r], cond[[i]], tMinMax[[i, 1]], 
+        tMinMax[[i, 2]]]}][s], {s, tMinMax[[i, 1]], tMinMax[[i, 2]]}, 
+    opts, PlotRange -> All, AxesOrigin -> {0, 0}], {i, 1, 
+    Length[cond]}], Graphics[Disk[{0, 0}, r]]]
+
+(*PuntiSuLineeDiFlussoConDiscoRuotate*)
+Clear[PuntiSuLineeDiFlussoConDiscoRuotate]
+PuntiSuLineeDiFlussoConDiscoRuotate[f_, r_, theta_, cond_, tMinMax_, 
+  n_] := Table[
+  Rotazione[
+    theta, {Flussox[MT[f, 1], cond[[i]], tMinMax[[i, 1]], 
+      tMinMax[[i, 2]]], 
+     Flussoy[MT[f, 1], cond[[i]], tMinMax[[i, 1]], tMinMax[[i, 2]]]}][
+   s], {i, 1, Length[cond]},
+  {s, tMinMax[[i, 1]], tMinMax[[i, 2]],
+   ((tMinMax[[i, 2]] - tMinMax[[i, 1]])/(n - 1))}]
+
+
+Clear[PlotPuntiSuLineeDiFlussoConDiscoRuotate]
+PlotPuntiSuLineeDiFlussoConDiscoRuotate[f_, r_, theta_, cond_, 
+  tMinMax_, n_, raggioDischi_, opts___] := 
+ Show[Table[
+   Graphics[
+    Disk[PuntiSuLineeDiFlussoRuotate[MT[f, r], theta, cond, tMinMax, 
+       n][[i, j]], raggioDischi]], {i, 1, Length[cond]}, {j, 1, n}], 
+  opts, PlotRange -> All]
+
+Clear[FrecceSuLineeDiFlussoConDiscoRuotate]
+FrecceSuLineeDiFlussoConDiscoRuotate[f_, r_, theta_, cond_, tMinMax_, 
+  n_, l_] := Union[
+  Table[Arrow[{PuntiSuLineeDiFlussoConDiscoRuotate[f, r, theta, cond, 
+       tMinMax, n][[i, j]], 
+     PuntiSuLineeDiFlussoConDiscoRuotate[f, r, theta, cond, tMinMax, 
+        n][[i, j]] + 
+      l Normalize[
+        GradRe[Ruotamento[-theta][f[z]]] /. {x :> 
+           PuntiSuLineeDiFlussoConDiscoRuotate[f, r, theta, cond, 
+             tMinMax, n][[i, j, 1]], 
+          y :> PuntiSuLineeDiFlussoConDiscoRuotate[f, r, theta, cond, 
+             tMinMax, n][[i, j, 2]]}]}], {i, 1, Length[cond], 2}, {j, 
+    1, n, 2}],
+  Table[Arrow[{PuntiSuLineeDiFlussoConDiscoRuotate[f, r, theta, cond, 
+       tMinMax, n][[i, j]], 
+     PuntiSuLineeDiFlussoConDiscoRuotate[f, r, theta, cond, tMinMax, 
+        n][[i, j]] + 
+      l Normalize[
+        GradRe[Ruotamento[-theta][f[z]]] /. {x :> 
+           PuntiSuLineeDiFlussoConDiscoRuotate[f, r, theta, cond, 
+             tMinMax, n][[i, j, 1]], 
+          
+          y :> PuntiSuLineeDiFlussoConDiscoRuotate[f, r, theta, cond, 
+             tMinMax, n][[i, j, 2]]}]}], {i, 2, Length[cond], 2}, {j, 
+    2, n, 2}]]
+
+Clear[MostraLineeFrecceConDiscoRuotate]
+MostraLineeFrecceConDiscoRuotate[f_, r_, theta_, cond_, tMinMax_, n_, 
+  l_, opts___] := Show[
+  PlotLineeDiFlussoConDiscoRuotate[f, r, theta, cond, tMinMax, opts],
+  (*PlotPuntiSuLineeDiFlusso[f,cond,tMinMax,n,r],*)
+  Graphics[
+   FrecceSuLineeDiFlussoConDiscoRuotate[f, r, theta, cond, tMinMax, n,
+     l], opts]
+  ]
+
+Clear[JoukoInvPlus]
+JoukoInvPlus[x_, y_] := (x + I y + Sqrt[(x + I y)^2 - 1])
+Clear[JoukoInvMinus]
+JoukoInvMinus[x_, y_] := x + I y - Sqrt[(x + I y)^2 - 1]
+
+(*ProfiloAlare (Interno)*)
+InternoProfiloAlare[ax_, ay_, r_, opts___] := 
+ RegionPlot[(((Re[JoukoInvPlus[x, y]] - 
+           ax)^2 + (Im[JoukoInvPlus[x, y]] - ay)^2 < r^2) && (x >= 
+       0) ) || (((Re[JoukoInvMinus[x, y]] - 
+           ax)^2 + (Im[JoukoInvMinus[x, y]] - ay)^2 < r^2) && (x <= 
+       0)), {x, -1.5, 1.5}, {y, -0.5, 0.5}, AspectRatio -> Automatic, 
+  Axes -> True, BoundaryStyle -> None, opts]
+
+(*Profilo alare (bordo)*)
+BordoProfiloAlare[ax_, ay_, r_, opts___] := 
+ ParametricPlot[{ToReal[Joukamento[ax + ay I + r Exp[I t]]][[1]], 
+   ToReal[Joukamento[ax + ay I + r Exp[I t]]][[2]]}, {t, 0, 2 Pi}, 
+  AspectRatio -> Automatic, AxesOrigin -> {0, 0}, opts]
+
+(*Profilo alare completo*)
+ProfiloAlare[ax_, ay_, r_, opts___] := 
+ Show[InternoProfiloAlare[ax, ay, r, opts], 
+  BordoProfiloAlare[ax, ay, r, opts]]
+
+Clear[LineeDiFlussoIntornoAlProfiloAlare]
+LineeDiFlussoIntornoAlProfiloAlare[f_, r_, ax_, ay_, cond_, tMinMax_][
+  s_] := Module[{flx, fly},
+  flx[t_] := 
+   Flussox[MT[f, r], cond[[i]], tMinMax[[i, 1]], tMinMax[[i, 2]]][t] +
+     ax;
+  fly[t_] := 
+   Flussoy[MT[f, r], cond[[i]], tMinMax[[i, 1]], tMinMax[[i, 2]]][t] +
+     ay;
+  Table[Joukowsky[ax + I ay, r, {flx, fly}][s], {i, 1, Length[cond]}]]
+
+(*PlotLineeDiFlussoIntornoAlProfiloAlare disegna una collezione di \
+curve integrali date dalla parte reale della funzione f con \
+condizioni iniziali dati dalla lista cond e un profilo alare di \
+parametro a=ax+Iay ed r*)
+(*Per usare questa funzione, deve essere definita 1) la funzione \
+complessa da passare in input, 2) il raggio r, 3) ax e ay, 4) una \
+tabella di condizioni iniziali, 5) una tabella di tempi minimi e \
+massimi (da determinare con la funzione DeterminaTempoMinMax, 6) \
+eventuali opzioni per il grafico*) 
+Clear[PlotLineeDiFlussoIntornoAlProfiloAlare]
+PlotLineeDiFlussoIntornoAlProfiloAlare[f_, r_, ax_, ay_, cond_, 
+  tMinMax_, opts___] := Module[{flx, fly},
+  flx[s_] := 
+   Flussox[MT[f, r], cond[[i]], tMinMax[[i, 1]], tMinMax[[i, 2]]][s] +
+     ax;
+  fly[s_] := 
+   Flussoy[MT[f, r], cond[[i]], tMinMax[[i, 1]], tMinMax[[i, 2]]][s] +
+     ay;
+  Show[Table[ParametricPlot[
+     Joukowsky[ax + I ay, r,
+       {flx, fly}][s],
+     {s, tMinMax[[i, 1]], tMinMax[[i, 2]]}, opts, PlotRange -> All, 
+     AxesOrigin -> {0, 0}], {i, 1, Length[cond]}], 
+   ProfiloAlare[ax, ay, r, PlotStyle -> Opacity[0.5, Red]], opts]]
+
+Clear[PuntiSuLineeDiFlussoIntornoAlProfiloAlare]
+PuntiSuLineeDiFlussoIntornoAlProfiloAlare[f_, r_, ax_, ay_, cond_, 
+  tMinMax_, n_] := 
+ Table[{LineeDiFlussoIntornoAlProfiloAlare[f, r, ax, ay, cond, 
+      tMinMax][s][[i, 1]], 
+   LineeDiFlussoIntornoAlProfiloAlare[f, r, ax, ay, cond, tMinMax][
+     s][[i, 2]]}, {i, 1, Length[cond]}, {s, tMinMax[[i, 1]], 
+   tMinMax[[i, 2]],
+   ((tMinMax[[i, 2]] - tMinMax[[i, 1]])/(n - 1))}]
+
+Clear[PlotPuntiSuLineeDiFlussoIntornoAlProfiloAlare]
+PlotPuntiSuLineeDiFlussoIntornoAlProfiloAlare[f_, r_, ax_, ay_, cond_,
+   tMinMax_, n_, opts___] := 
+ Show[Table[
+   Graphics[
+    Disk[PuntiSuLineeDiFlussoIntornoAlProfiloAlare[f, r, ax, ay, cond,
+        tMinMax, n][[i, j]], 0.1], opts], {i, 1, Length[cond]}, {j, 1,
+     n}], opts]
+
+Clear[FrecceSuLineeDiFlussoIntornoAlProfiloAlare]
+FrecceSuLineeDiFlussoIntornoAlProfiloAlare[f_, r_, ax_, ay_, cond_, 
+  tMinMax_, n_, l_] := Union[
+  Table[Arrow[{PuntiSuLineeDiFlussoIntornoAlProfiloAlare[f, r, ax, ay,
+        cond, tMinMax, n][[i, j]], 
+     PuntiSuLineeDiFlussoIntornoAlProfiloAlare[f, r, ax, ay, cond, 
+        tMinMax, n][[i, j]] + 
+      l Normalize[
+        GradRe[f[z]] /. {x :> 
+           PuntiSuLineeDiFlussoIntornoAlProfiloAlare[f, r, ax, ay, 
+             cond, tMinMax, n][[i, j, 1]], 
+          y :> PuntiSuLineeDiFlussoIntornoAlProfiloAlare[f, r, ax, ay,
+              cond, tMinMax, n][[i, j, 2]]}]}], {i, 1, Length[cond], 
+    2}, {j, 1, n, 2}],
+  Table[Arrow[{PuntiSuLineeDiFlussoIntornoAlProfiloAlare[f, r, ax, ay,
+        cond, tMinMax, n][[i, j]], 
+     PuntiSuLineeDiFlussoIntornoAlProfiloAlare[f, r, ax, ay, cond, 
+        tMinMax, n][[i, j]] + 
+      l Normalize[
+        GradRe[f[z]] /. {x :> 
+           PuntiSuLineeDiFlussoIntornoAlProfiloAlare[f, r, ax, ay, 
+             cond, tMinMax, n][[i, j, 1]], 
+          y :> PuntiSuLineeDiFlussoIntornoAlProfiloAlare[f, r, ax, ay,
+              cond, tMinMax, n][[i, j, 2]]}]}], {i, 2, Length[cond], 
+    2}, {j, 2, n, 2}]]
+
+Clear[MostraLineeFrecceIntornoAlProfiloAlare]  
+MostraLineeFrecceIntornoAlProfiloAlare[f_, r_, ax_, ay_, cond_, 
+  tMinMax_, n_, l_, opts___] := Show[
+  PlotLineeDiFlussoIntornoAlProfiloAlare[f, r, ax, ay, cond, tMinMax, 
+   opts],
+  (*PlotPuntiSuLineeDiFlusso[f,cond,tMinMax,n,r],*)
+  Graphics[
+   FrecceSuLineeDiFlussoIntornoAlProfiloAlare[f, r, ax, ay, cond, 
+    tMinMax, n, l], opts]
+  ]
+
+Clear[LineeDiFlussoIntornoAlProfiloAlare]
+LineeDiFlussoIntornoAlProfiloAlare[f_, r_, ax_, ay_, cond_, tMinMax_][
+  s_] := Module[{flx, fly},
+  flx[t_] := 
+   Flussox[MT[f, r], cond[[i]], tMinMax[[i, 1]], tMinMax[[i, 2]]][t] +
+     ax;
+  fly[t_] := 
+   Flussoy[MT[f, r], cond[[i]], tMinMax[[i, 1]], tMinMax[[i, 2]]][t] +
+     ay;
+  Table[Joukowsky[ax + I ay, r, {flx, fly}][s], {i, 1, Length[cond]}]]
+
+Clear[LineeDiFlussoIntornoAlProfiloAlareRuotate]
+LineeDiFlussoIntornoAlProfiloAlareRuotate[f_, r_, ax_, ay_, theta_, 
+   cond_, tMinMax_, opts___][s_] := Module[{rot1, rot2},
+  rot1[t_] := 
+   Rotazione[
+       theta, {Flussox[MT[f, r], cond[[i]], tMinMax[[i, 1]], 
+         tMinMax[[i, 2]]], 
+        Flussoy[MT[f, r], cond[[i]], tMinMax[[i, 1]], 
+         tMinMax[[i, 2]]]}][t][[1]] + ax;
+  rot2[t_] := 
+   Rotazione[
+       theta, {Flussox[MT[f, r], cond[[i]], tMinMax[[i, 1]], 
+         tMinMax[[i, 2]]], 
+        Flussoy[MT[f, r], cond[[i]], tMinMax[[i, 1]], 
+         tMinMax[[i, 2]]]}][t][[2]] + ay;
+  Table[Joukowsky[ax + I ay, r, {rot1, rot2}][s], {i, 1, 
+    Length[cond]}]]
+
+(*PlotLineeDiFlussoIntornoAlProfiloAlareRuotate disegna una \
+collezione di curve integrali ruotate di angolo theta date dalla \
+parte reale della funzione f con condizioni iniziali dati dalla lista \
+cond e un profilo alare di parametro a=ax+Iay ed r*)
+(*Per usare questa funzione, deve essere definita 1) la funzione \
+complessa da passare in input, 2) il raggio r, 3) ax e ay, 4) \
+l'angolo theta, 5) una tabella di condizioni iniziali, 6) una tabella \
+di tempi minimi e massimi (da determinare con la funzione \
+DeterminaTempoMinMax, 6) eventuali opzioni per il grafico*) 
+Clear[PlotLineeDiFlussoIntornoAlProfiloAlareRuotate]
+PlotLineeDiFlussoIntornoAlProfiloAlareRuotate[f_, r_, ax_, ay_, 
+  theta_, cond_, tMinMax_, opts___] := Module[{rot1, rot2},
+  rot1[s_] := 
+   Rotazione[
+       theta, {Flussox[MT[f, r], cond[[i]], tMinMax[[i, 1]], 
+         tMinMax[[i, 2]]], 
+        Flussoy[MT[f, r], cond[[i]], tMinMax[[i, 1]], 
+         tMinMax[[i, 2]]]}][s][[1]] + ax;
+  rot2[s_] := 
+   Rotazione[
+       theta, {Flussox[MT[f, r], cond[[i]], tMinMax[[i, 1]], 
+         tMinMax[[i, 2]]], 
+        Flussoy[MT[f, r], cond[[i]], tMinMax[[i, 1]], 
+         tMinMax[[i, 2]]]}][s][[2]] + ay;
+  Show[Table[
+    ParametricPlot[
+     Joukowsky[ax + I ay, r, {rot1, rot2}][s], {s, tMinMax[[i, 1]], 
+      tMinMax[[i, 2]]}, opts, PlotRange -> All, 
+     AxesOrigin -> {0, 0}], {i, 1, Length[cond]}], 
+   ProfiloAlare[ax, ay, r, PlotStyle -> Opacity[0.5, Red]], opts]]
+
+Clear[PuntiSuLineeDiFlussoIntornoAlProfiloAlareRuotati]
+PuntiSuLineeDiFlussoIntornoAlProfiloAlareRuotati[f_, r_, ax_, ay_, 
+  theta_, cond_, tMinMax_, n_] := 
+ Table[{LineeDiFlussoIntornoAlProfiloAlareRuotate[f, r, ax, ay, theta,
+       cond, tMinMax][s][[i, 1]], 
+   LineeDiFlussoIntornoAlProfiloAlareRuotate[f, r, ax, ay, theta, 
+      cond, tMinMax][s][[i, 2]]}, {i, 1, Length[cond]}, {s, 
+   tMinMax[[i, 1]], tMinMax[[i, 2]],
+   ((tMinMax[[i, 2]] - tMinMax[[i, 1]])/(n - 1))}]
+
+Clear[FrecceSuLineeDiFlussoIntornoAlProfiloAlareRuotate]
+FrecceSuLineeDiFlussoIntornoAlProfiloAlareRuotate[f_, r_, ax_, ay_, 
+  theta_, cond_, tMinMax_, n_, l_] := Union[
+  Table[Arrow[{PuntiSuLineeDiFlussoIntornoAlProfiloAlareRuotati[f, r, 
+       ax, ay, theta, cond, tMinMax, n][[i, j]], 
+     PuntiSuLineeDiFlussoIntornoAlProfiloAlareRuotati[f, r, ax, ay, 
+        theta, cond, tMinMax, n][[i, j]] + 
+      l Normalize[
+        GradRe[Ruotamento[-theta][f[z]]] /. {x :> 
+           PuntiSuLineeDiFlussoIntornoAlProfiloAlareRuotati[f, r, ax, 
+             ay, theta, cond, tMinMax, n][[i, j, 1]], 
+          y :> PuntiSuLineeDiFlussoIntornoAlProfiloAlareRuotati[f, r, 
+             ax, ay, theta, cond, tMinMax, n][[i, j, 2]]}]}], {i, 1, 
+    Length[cond], 2}, {j, 1, n, 2}],
+  Table[Arrow[{PuntiSuLineeDiFlussoIntornoAlProfiloAlareRuotati[f, r, 
+       ax, ay, theta, cond, tMinMax, n][[i, j]], 
+     PuntiSuLineeDiFlussoIntornoAlProfiloAlareRuotati[f, r, ax, ay, 
+        theta, cond, tMinMax, n][[i, j]] + 
+      l Normalize[
+        GradRe[Ruotamento[-theta][f[z]]] /. {x :> 
+           PuntiSuLineeDiFlussoIntornoAlProfiloAlareRuotati[f, r, ax, 
+             ay, theta, cond, tMinMax, n][[i, j, 1]], 
+          y :> PuntiSuLineeDiFlussoIntornoAlProfiloAlareRuotati[f, r, 
+             ax, ay, theta, cond, tMinMax, n][[i, j, 2]]}]}], {i, 2, 
+    Length[cond], 2}, {j, 2, n, 2}]]
+
+Clear[MostraLineeFrecceIntornoAlProfiloAlareRuotate]
+MostraLineeFrecceIntornoAlProfiloAlareRuotate[f_, r_, ax_, ay_, 
+  theta_, cond_, tMinMax_, n_, l_, opts___] := Show[
+  PlotLineeDiFlussoIntornoAlProfiloAlareRuotate[f, r, ax, ay, theta, 
+   cond, tMinMax, opts],
+  ProfiloAlare[ax, ay, r, PlotStyle -> Opacity[0.5, Red]],
+  (*PlotPuntiSuLineeDiFlusso[f,cond,tMinMax,n,r],*)
+  Graphics[
+   FrecceSuLineeDiFlussoIntornoAlProfiloAlareRuotate[f, r, ax, ay, 
+    theta, cond, tMinMax, n, l], opts]
+  ]
